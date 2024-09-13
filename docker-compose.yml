@@ -1,0 +1,73 @@
+services:
+
+  postgres:
+    image: postgres:15
+    hostname: postgres
+    environment:
+      - POSTGRES_USER=openvsx
+      - POSTGRES_PASSWORD=openvsx
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+    ports:
+      - '5432:5432'
+
+  elasticsearch:
+    image: elasticsearch:8.7.1
+    hostname: elasticsearch
+    environment:
+      - xpack.security.enabled=false
+      - xpack.ml.enabled=false
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    ports:
+      - 9200:9200
+      - 9300:9300
+    healthcheck:
+      test: curl -s http://elasticsearch01:9200 >/dev/null || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 50
+      start_period: 5s
+
+  kibana:
+    image: kibana:8.7.1
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    profiles:
+      - kibana
+
+  server:
+    image: ghcr.io/eclipse/openvsx-server:v0.16.4
+    volumes:
+      - ./application.yml:/home/openvsx/server/config/application.yml:ro
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
+      - elasticsearch
+    healthcheck:
+      test: "curl --fail --silent localhost:8081/actuator/health | grep UP || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 50
+      start_period: 5s
+    
+  webui:
+    image: ghcr.io/eclipse/openvsx-webui:v0.16.4
+    ports:
+      - 3000:3000
+    depends_on:
+      - server
+
+volumes:
+  pg_data:
+    driver: local
